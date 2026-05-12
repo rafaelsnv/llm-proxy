@@ -65,7 +65,7 @@ openaiRouter.post("/v1/chat/completions", async (req, res) => {
         fetchRes.status,
         fetchRes.statusText,
         req.method,
-        "/v1/chat/completions",
+        "/openai/v1/chat/completions",
         Date.now() - (req.startTime ?? Date.now()),
         {
           ...info,
@@ -85,7 +85,7 @@ openaiRouter.post("/v1/chat/completions", async (req, res) => {
         fetchRes.status,
         fetchRes.statusText,
         req.method,
-        "/v1/chat/completions",
+        "/openai/v1/chat/completions",
         Date.now() - (req.startTime ?? Date.now()),
         {
           contentSnippet: "",
@@ -104,7 +104,7 @@ openaiRouter.post("/v1/chat/completions", async (req, res) => {
     clearTimeout(timeout);
     const responseTime = Date.now() - (req.startTime ?? Date.now());
     logger.error({
-      event_message: `500 - ${req.method} /v1/chat/completions`,
+      event_message: `500 - ${req.method} /openai/v1/chat/completions`,
       responseTime,
       err,
     });

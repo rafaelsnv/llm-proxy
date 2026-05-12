@@ -31,9 +31,11 @@ if (logflareApiKey && logflareSourceToken) {
         timestamp: _timestamp,
         ...restMetadata
       } = item.metadata;
+      const eventMessage = item.message;
+      console.log(`[pino-logflare] ${eventMessage}`);
       return {
         ...restMetadata,
-        event_message: item.message,
+        event_message: eventMessage,
         logTime: item.metadata.logTime,
         host_info: {
           host: context?.host,

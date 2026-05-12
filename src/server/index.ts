@@ -118,7 +118,11 @@ app.use(rateLimiter);
 
 // Health check
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  res.json({
+    statusCode: "200",
+    statusMessage: "Ok",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Proxy routes
@@ -132,6 +136,23 @@ app.use(errorHandler);
 const server = app.listen(PORT, () => {
   console.log(`Minimax Proxy running on http://localhost:${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
+
+  // Startup health check
+  const healthCheckUrl = `http://localhost:${PORT}/health`;
+  fetch(healthCheckUrl)
+    .then((res) => {
+      if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
+      return res.json();
+    })
+    .then((data) => {
+      logger.info({
+        msg: `${data.statusCode} - Startup health check passed`,
+      });
+    })
+    .catch((err) => {
+      logger.error({ msg: `Startup health check failed: ${err.message}` });
+      process.exit(1);
+    });
 });
 
 // Graceful shutdown handler
