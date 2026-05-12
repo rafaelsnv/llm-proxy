@@ -11,7 +11,8 @@
     "build": "tsc && vite build",
     "start": "node dist/server/index.js",
     "preview": "vite preview",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "prod": "tsx src/server/index.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
