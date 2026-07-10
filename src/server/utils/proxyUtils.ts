@@ -6,11 +6,14 @@
 export const ALLOWED_HEADERS = ["content-type"];
 
 // Allowed headers for Anthropic route
+// NOTE: x-api-key is NOT included — the caller's x-api-key must never be
+// forwarded to upstream. The proxy reads it for its own auth (if needed) but
+// the upstream request is sent with the server's MINIMAX_API_KEY via
+// headers["x-api-key"] = MINIMAX_API_KEY in the route handler.
 export const ANTHROPIC_ALLOWED_HEADERS = [
   "content-type",
   "anthropic-version",
   "anthropic-beta",
-  "x-api-key",
 ];
 
 // Request timeout in milliseconds

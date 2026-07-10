@@ -1,8 +1,15 @@
 import { useState, useEffect } from "react";
+import QuotaIndicator from "./QuotaIndicator";
 
 interface HealthStatus {
   status: string;
   timestamp: string;
+}
+
+interface QuotaStatus {
+  ok: boolean;
+  data: any;
+  fetchTimeMs: number;
 }
 
 function StatusPage() {
@@ -10,6 +17,8 @@ function StatusPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isVisible, setIsVisible] = useState(!document.hidden);
+  const [quota, setQuota] = useState<QuotaStatus | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(true);
 
   useEffect(() => {
     function handleVisibilityChange() {
@@ -34,6 +43,13 @@ function StatusPage() {
     return () => clearInterval(interval);
   }, [isVisible]);
 
+  // Fetch quota on mount and whenever page becomes visible
+  useEffect(() => {
+    if (isVisible) {
+      checkQuota();
+    }
+  }, [isVisible]);
+
   async function checkHealth() {
     if (!isVisible) return;
 
@@ -50,6 +66,27 @@ function StatusPage() {
       setError("Cannot connect to proxy");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function checkQuota() {
+    if (!isVisible) return;
+
+    try {
+      const res = await fetch("/quota");
+      if (res.status === 503) {
+        setQuota(null);
+        setQuotaLoading(false);
+      } else if (res.ok) {
+        const data = await res.json();
+        setQuota({ ok: true, data, fetchTimeMs: Date.now() });
+      } else {
+        setQuota(null);
+        setQuotaLoading(false);
+      }
+    } catch (err) {
+      setQuota(null);
+      setQuotaLoading(false);
     }
   }
 
@@ -115,6 +152,10 @@ function StatusPage() {
             Last checked: {new Date(health.timestamp).toLocaleTimeString()}
           </p>
         )}
+      </div>
+
+      <div style={{ marginTop: "2rem" }}>
+        <QuotaIndicator snapshot={quota} loading={quotaLoading} />
       </div>
 
       <div

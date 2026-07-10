@@ -3,11 +3,14 @@ import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import { logger } from "./utils/logger.js";
-import { PORT } from "./config.js";
+import {
+  PORT,
+} from "./config.js";
 import { corsMiddleware } from "./middleware/cors.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { anthropicRouter } from "./routes/anthropic.js";
 import { openaiRouter } from "./routes/openai.js";
+import { quotaRouter } from "./routes/quota.js";
 
 // Extend Express Request to include startTime
 declare global {
@@ -25,7 +28,10 @@ const rateLimiter = rateLimit({
   legacyHeaders: false,
   handler: (req, res) => {
     logger.warn(
-      { req: { method: req.method, url: req.path } },
+      {
+        event_message: `429 - ${req.method}\t${req.path}`,
+        req: { method: req.method, url: req.path },
+      },
       "Rate limit exceeded",
     );
     res.status(429).json({
@@ -124,6 +130,7 @@ app.get("/health", (_req, res) => {
 // Proxy routes
 app.use("/anthropic", anthropicRouter);
 app.use("/openai", openaiRouter);
+app.use("/quota", quotaRouter);
 
 // Error handling
 app.use(notFoundHandler);
@@ -132,7 +139,10 @@ app.use(errorHandler);
 const server = app.listen(PORT, () => {
   console.log(`Minimax Proxy running on http://localhost:${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
+
 });
+
+
 
 // Graceful shutdown handler
 const shutdown = () => {
