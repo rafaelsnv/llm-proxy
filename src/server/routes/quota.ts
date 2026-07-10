@@ -7,7 +7,7 @@ import type { TokenPlanRemainsResponse } from "../utils/quotaTypes.js";
 
 export const quotaRouter = Router();
 
-function formatRemainingTime(unixMs: number | null | undefined): string | null {
+function formatResetsIn(unixMs: number | null | undefined): string | null {
   if (unixMs == null || unixMs <= 0) return null;
   const totalSeconds = Math.floor(unixMs / 1000);
   const hours = Math.floor(totalSeconds / 3600);
@@ -116,8 +116,8 @@ async function handleQuotaSnapshot(req: Request, res: Response): Promise<void> {
   if (result.data !== null) {
     const models = result.data.model_remains.map((m) => ({
       ...m,
-      remainsTime: formatRemainingTime(m.remains_time),
-      weeklyRemainsTime: formatRemainingTime(m.weekly_remains_time),
+      resetsIn: formatResetsIn(m.remains_time),
+      weeklyResetsIn: formatResetsIn(m.weekly_remains_time),
     }));
 
     logQuotaSnapshot({
@@ -126,8 +126,8 @@ async function handleQuotaSnapshot(req: Request, res: Response): Promise<void> {
       fetchTimeMs: result.fetchTimeMs,
       modelRemains: models.map((m) => ({
         model_name: m.model_name,
-        remainsTime: m.remainsTime,
-        weeklyRemainsTime: m.weeklyRemainsTime,
+        resetsIn: m.resetsIn,
+        weeklyResetsIn: m.weeklyResetsIn,
         currentIntervalRemainingPercent: m.current_interval_remaining_percent,
         currentWeeklyRemainingPercent: m.current_weekly_remaining_percent,
         currentIntervalStatus: m.current_interval_status,
@@ -155,8 +155,8 @@ async function handleQuotaSnapshot(req: Request, res: Response): Promise<void> {
     modelRemains: [
       {
         model_name: "unknown",
-        remainsTime: null,
-        weeklyRemainsTime: null,
+        resetsIn: null,
+        weeklyResetsIn: null,
         currentIntervalRemainingPercent: 0,
         currentWeeklyRemainingPercent: 0,
         currentIntervalStatus: 0,
@@ -177,8 +177,8 @@ async function handleRemains(req: Request, res: Response): Promise<void> {
   if (result.data) {
     const models = result.data.model_remains.map((m) => ({
       ...m,
-      remainsTime: formatRemainingTime(m.remains_time),
-      weeklyRemainsTime: formatRemainingTime(m.weekly_remains_time),
+      resetsIn: formatResetsIn(m.remains_time),
+      weeklyResetsIn: formatResetsIn(m.weekly_remains_time),
     }));
 
     logQuotaSnapshot({
@@ -187,8 +187,8 @@ async function handleRemains(req: Request, res: Response): Promise<void> {
       fetchTimeMs: latencyMs,
       modelRemains: models.map((m) => ({
         model_name: m.model_name,
-        remainsTime: m.remainsTime,
-        weeklyRemainsTime: m.weeklyRemainsTime,
+        resetsIn: m.resetsIn,
+        weeklyResetsIn: m.weeklyResetsIn,
         currentIntervalRemainingPercent: m.current_interval_remaining_percent,
         currentWeeklyRemainingPercent: m.current_weekly_remaining_percent,
         currentIntervalStatus: m.current_interval_status,
@@ -215,8 +215,8 @@ async function handleRemains(req: Request, res: Response): Promise<void> {
     modelRemains: [
       {
         model_name: "unknown",
-        remainsTime: null,
-        weeklyRemainsTime: null,
+        resetsIn: null,
+        weeklyResetsIn: null,
         currentIntervalRemainingPercent: 0,
         currentWeeklyRemainingPercent: 0,
         currentIntervalStatus: 0,

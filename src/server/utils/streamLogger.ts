@@ -496,8 +496,8 @@ export interface QuotaSnapshotLogInput {
   error?: string;
   modelRemains: Array<{
     model_name: string;
-    remainsTime: string | null;
-    weeklyRemainsTime: string | null;
+    resetsIn: string | null;
+    weeklyResetsIn: string | null;
     currentIntervalRemainingPercent: number;
     currentWeeklyRemainingPercent: number;
     currentIntervalStatus: number;
@@ -531,8 +531,8 @@ export function logQuotaSnapshot(input: QuotaSnapshotLogInput): void {
   for (const m of modelRemains) {
     const key = m.model_name;
     models[key] = {
-      remains_time: m.remainsTime,
-      weekly_remains_time: m.weeklyRemainsTime,
+      resets_in: m.resetsIn,
+      weekly_resets_in: m.weeklyResetsIn,
       interval_remaining_pct: m.currentIntervalRemainingPercent,
       weekly_remaining_pct: m.currentWeeklyRemainingPercent,
       interval_status: m.currentIntervalStatus,
