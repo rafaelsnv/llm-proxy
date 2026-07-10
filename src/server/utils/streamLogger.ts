@@ -4,9 +4,8 @@
  */
 
 import { logger } from "./logger.js";
-
-// Maximum characters to log from response content (for fallback/trimming)
-const MAX_CONTENT_LOG = 500;
+import { formatResetsIn } from "./proxyUtils.js";
+import { MAX_CONTENT_LOG } from "../config.js";
 
 /**
  * Extract the last user message from messages array.
@@ -317,6 +316,266 @@ export function extractOpenAIStreamingInfo(chunks: string[]): {
 }
 
 /**
+ * Parse accumulated OpenAI streaming chunks from raw bytes and extract info.
+ * Decodes bytes and parses in one pass to avoid double-decoding overhead.
+ */
+export function extractOpenAIStreamingInfoFromBytes(chunks: Uint8Array[]): {
+  contentSnippet: string;
+  finishReason: string | null;
+  model: string | null;
+  toolCalls: Array<{
+    index: number;
+    id: string;
+    type: string;
+    function: { name: string; arguments: string };
+  }>;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  } | null;
+  responseId: string | null;
+  inputSensitiveType: number | null;
+  outputSensitive: boolean | null;
+} {
+  let content = "";
+  let finishReason: string | null = null;
+  let model: string | null = null;
+  const toolCalls: Array<{
+    index: number;
+    id: string;
+    type: string;
+    function: { name: string; arguments: string };
+  }> = [];
+  let usage: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+  } | null = null;
+  let responseId: string | null = null;
+  let inputSensitiveType: number | null = null;
+  let outputSensitive: boolean | null = null;
+  const decoder = new TextDecoder();
+
+  for (const chunkBytes of chunks) {
+    try {
+      const chunkStr = decoder.decode(chunkBytes);
+      const chunk = JSON.parse(chunkStr);
+      const choice = chunk.choices?.[0];
+      if (!choice) continue;
+
+      // Capture response ID from first chunk
+      if (!responseId && chunk.id) {
+        responseId = chunk.id;
+      }
+
+      // Capture model from first chunk
+      if (!model && chunk.model) {
+        model = chunk.model;
+      }
+
+      // Capture sensitive flags from any chunk
+      if (chunk.input_sensitive_type != null) {
+        inputSensitiveType = chunk.input_sensitive_type;
+      }
+      if (chunk.output_sensitive != null) {
+        outputSensitive = chunk.output_sensitive;
+      }
+
+      // Accumulate content
+      const delta = choice.delta;
+      if (delta && typeof delta === "object") {
+        if (typeof delta.content === "string") {
+          content += delta.content;
+        }
+
+        // Extract tool calls
+        if (Array.isArray(delta.tool_calls)) {
+          for (const tc of delta.tool_calls) {
+            toolCalls.push({
+              index: tc.index ?? 0,
+              id: tc.id ?? "",
+              type: tc.type ?? "function",
+              function: {
+                name: tc.function?.name ?? "",
+                arguments: tc.function?.arguments ?? "",
+              },
+            });
+          }
+        }
+      }
+
+      // Track finish reason
+      if (choice.finish_reason) {
+        finishReason = choice.finish_reason;
+      }
+
+      // Extract usage from final chunk
+      if (chunk.usage) {
+        usage = {
+          input_tokens: chunk.usage.prompt_tokens ?? 0,
+          output_tokens: chunk.usage.completion_tokens ?? 0,
+          total_tokens: chunk.usage.total_tokens ?? 0,
+        };
+      }
+    } catch {
+      // Skip malformed JSON
+    }
+  }
+
+  return {
+    contentSnippet: content,
+    finishReason,
+    model,
+    toolCalls,
+    usage,
+    responseId,
+    inputSensitiveType,
+    outputSensitive,
+  };
+}
+
+/**
+ * Parse accumulated Anthropic streaming chunks from raw bytes and extract info.
+ * Decodes bytes and parses SSE format in one pass to avoid double-decoding overhead.
+ */
+export function extractAnthropicStreamingInfoFromBytes(chunks: Uint8Array[]): {
+  contentSnippet: string;
+  model: string | null;
+  messageId: string | null;
+  messageType: string | null;
+  messageRole: string | null;
+  stopReason: string | null;
+  inputTokens: number | null;
+  inputTokensDetails: { cachedTokens: number | null };
+  outputTokens: number | null;
+  outputTokensDetails: { reasoningTokens: number | null };
+  cacheCreationInputTokens: number | null;
+  cacheReadInputTokens: number | null;
+  serviceTier: string | null;
+  responseId: string | null;
+  finishReason: null;
+} {
+  const partial: {
+    content: string;
+    model: string | null;
+    messageId: string | null;
+    messageType: string | null;
+    messageRole: string | null;
+    stopReason: string | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    cacheCreationInputTokens: number | null;
+    cacheReadInputTokens: number | null;
+    serviceTier: string | null;
+  } = {
+    content: "",
+    model: null,
+    messageId: null,
+    messageType: null,
+    messageRole: null,
+    stopReason: null,
+    inputTokens: null,
+    outputTokens: null,
+    cacheCreationInputTokens: null,
+    cacheReadInputTokens: null,
+    serviceTier: null,
+  };
+  const decoder = new TextDecoder();
+
+  for (const chunkBytes of chunks) {
+    const line = decoder.decode(chunkBytes);
+    const data = parseSSEData(line);
+    if (!data) continue;
+
+    const type = data.type as string;
+
+    // Capture model + service_tier + identity from message_start
+    if (type === "message_start") {
+      const msg = data.message as Record<string, unknown> | undefined;
+      if (msg) {
+        if (msg.model && !partial.model) {
+          partial.model = msg.model as string;
+        }
+        if (msg.service_tier && !partial.serviceTier) {
+          partial.serviceTier = msg.service_tier as string;
+        }
+        if (msg.id && !partial.messageId) {
+          partial.messageId = msg.id as string;
+        }
+        if (msg.type && !partial.messageType) {
+          partial.messageType = msg.type as string;
+        }
+        if (msg.role && !partial.messageRole) {
+          partial.messageRole = msg.role as string;
+        }
+      }
+    }
+
+    if (type === "content_block_delta") {
+      const delta = data.delta as Record<string, unknown>;
+      if (delta.type === "text_delta") {
+        partial.content += delta.text as string;
+      }
+    }
+
+    if (type === "message_delta") {
+      const usage = data.usage as Record<string, number> | undefined;
+      const delta = data.delta as Record<string, unknown> | undefined;
+      const stopReason = delta?.stop_reason as string | undefined;
+
+      // Capture stop reason
+      if (stopReason && !partial.stopReason) {
+        partial.stopReason = stopReason;
+      }
+
+      // Capture usage
+      if (usage) {
+        if (partial.inputTokens === null && usage.input_tokens !== undefined) {
+          partial.inputTokens = usage.input_tokens;
+        }
+        partial.outputTokens = usage.output_tokens ?? null;
+        if (
+          partial.cacheCreationInputTokens === null &&
+          usage.cache_creation_input_tokens !== undefined
+        ) {
+          partial.cacheCreationInputTokens =
+            usage.cache_creation_input_tokens;
+        }
+        if (
+          partial.cacheReadInputTokens === null &&
+          usage.cache_read_input_tokens !== undefined
+        ) {
+          partial.cacheReadInputTokens = usage.cache_read_input_tokens;
+        }
+      }
+    }
+  }
+
+  return {
+    contentSnippet: partial.content,
+    model: partial.model,
+    messageId: partial.messageId,
+    messageType: partial.messageType,
+    messageRole: partial.messageRole,
+    stopReason: partial.stopReason,
+    inputTokens: partial.inputTokens,
+    inputTokensDetails: {
+      cachedTokens: partial.cacheReadInputTokens,
+    },
+    outputTokens: partial.outputTokens,
+    outputTokensDetails: {
+      reasoningTokens: null,
+    },
+    cacheCreationInputTokens: partial.cacheCreationInputTokens,
+    cacheReadInputTokens: partial.cacheReadInputTokens,
+    serviceTier: partial.serviceTier,
+    responseId: partial.messageId,
+    finishReason: null,
+  };
+}
+
+/**
  * Log streaming response info combined with HTTP details.
  * Single log entry per request with all data.
  */
@@ -505,16 +764,6 @@ export interface QuotaSnapshotLogInput {
   }>;
   endpoint: string;
   method: string;
-}
-
-function formatRemainingTime(unixMs: number | null | undefined): string | null {
-  if (unixMs == null || unixMs <= 0) return null;
-  const totalSeconds = Math.floor(unixMs / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m`;
-  return "<1m";
 }
 
 /**

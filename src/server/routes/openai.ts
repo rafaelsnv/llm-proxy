@@ -7,22 +7,19 @@ import {
 } from "../utils/proxyUtils.js";
 import { OPENAI_BASE_URL, MINIMAX_API_KEY } from "../config.js";
 import {
-  extractOpenAIStreamingInfo,
+  extractOpenAIStreamingInfoFromBytes,
   logStreamingResponse,
   logStreamingError,
 } from "../utils/streamLogger.js";
 
 export const openaiRouter = Router();
 
-openaiRouter.post("/v1/chat/completions", async (req, res) => {
+openaiRouter.post("/openai/v1/chat/completions", async (req, res) => {
   const targetUrl = `${OPENAI_BASE_URL}/chat/completions`;
 
   const headers = filterHeaders(req.headers, ALLOWED_HEADERS);
-  // MiniMax expects the server key in the x-api-key header, not Bearer token.
-  headers["x-api-key"] = MINIMAX_API_KEY;
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  // OpenAI-compatible endpoint expects Authorization header with Bearer token.
+  headers["Authorization"] = `Bearer ${MINIMAX_API_KEY}`;
 
   try {
     // Boundary A — start of upstream fetch.
@@ -31,30 +28,27 @@ openaiRouter.post("/v1/chat/completions", async (req, res) => {
       method: "POST",
       headers,
       body: JSON.stringify(req.body),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const upstreamLatencyMs = Date.now() - fetchStart;
-
-    clearTimeout(timeout);
     res.status(fetchRes.status);
 
     forwardRateLimitHeaders(fetchRes, res);
 
     if (fetchRes.body) {
-      const chunks: string[] = [];
+      const chunks: Uint8Array[] = [];
       const body = fetchRes.body as unknown as AsyncIterable<Uint8Array>;
       for await (const chunk of body) {
-        const text = new TextDecoder().decode(chunk);
-        chunks.push(text);
+        chunks.push(chunk);
         res.write(chunk);
       }
       res.end();
 
-      const info = extractOpenAIStreamingInfo(chunks);
+      const info = extractOpenAIStreamingInfoFromBytes(chunks);
       logStreamingResponse(
         fetchRes.status,
         req.method,
-        "/v1/chat/completions",
+        "/openai/v1/chat/completions",
         Date.now() - (req.startTime ?? Date.now()),
         {
           contentSnippet: info.contentSnippet,
@@ -64,7 +58,7 @@ openaiRouter.post("/v1/chat/completions", async (req, res) => {
           responseId: info.responseId,
           inputSensitiveType: info.inputSensitiveType,
           outputSensitive: info.outputSensitive,
-          toolCalls: info.toolCalls?.map((tc) => ({
+          toolCalls: info.toolCalls?.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
             id: tc.id,
             name: tc.function.name,
             arguments: tc.function.arguments,
@@ -92,7 +86,7 @@ openaiRouter.post("/v1/chat/completions", async (req, res) => {
       logStreamingResponse(
         fetchRes.status,
         req.method,
-        "/v1/chat/completions",
+        "/openai/v1/chat/completions",
         Date.now() - (req.startTime ?? Date.now()),
         {
           contentSnippet: "",
@@ -124,12 +118,11 @@ openaiRouter.post("/v1/chat/completions", async (req, res) => {
       );
     }
   } catch (err: unknown) {
-    clearTimeout(timeout);
     const responseTime = Date.now() - (req.startTime ?? Date.now());
     logStreamingError({
       err,
       method: req.method,
-      endpoint: "/v1/chat/completions",
+      endpoint: "/openai/v1/chat/completions",
       responseTime_ms: responseTime,
       reqId: String(req.id),
       routeClass: "proxy_out",

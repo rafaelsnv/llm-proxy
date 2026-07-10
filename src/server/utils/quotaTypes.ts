@@ -20,6 +20,7 @@
 
 import { z } from "zod";
 import { logger } from "./logger.js";
+import { MISMATCH_THROTTLE_MS, MISMATCH_SUMMARY_CAP } from "../config.js";
 
 // ---------------------------------------------------------------------------
 // Token Plan quota types
@@ -107,16 +108,6 @@ const FALLBACK_BASE_RESP: QuotaBaseResp = {
 // ---------------------------------------------------------------------------
 
 /**
- * Default throttle window for shape-mismatch warnings.
- * Repeated mismatches within this window are suppressed; a single
- * "suppressed N warnings" follow-up is emitted when the window
- * elapses or the count exceeds the cap. Keeps Logflare from being
- * flooded if the upstream API drift is sustained.
- */
-const MISMATCH_THROTTLE_MS = 60_000;
-const MISMATCH_SUMMARY_CAP = 50;
-
-/**
  * In-memory throttle state, keyed by `tag:issueKey`.
  * - `lastEmit`: ms timestamp of the last warning we actually sent
  * - `suppressed`: count of warnings suppressed since that emit
@@ -128,6 +119,59 @@ const throttleState = new Map<
   string,
   { lastEmit: number; suppressed: number }
 >();
+
+// ---------------------------------------------------------------------------
+// Periodic cleanup to prevent unbounded Map growth
+// ---------------------------------------------------------------------------
+
+/** Cleanup interval: 5 minutes */
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
+let throttleCleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Remove entries older than MISMATCH_THROTTLE_MS from throttleState.
+ * This prevents the Map from growing indefinitely with stale entries.
+ */
+function cleanupStaleThrottleEntries(): void {
+  const now = Date.now();
+  let removed = 0;
+  for (const [key, state] of throttleState.entries()) {
+    if (now - state.lastEmit >= MISMATCH_THROTTLE_MS) {
+      throttleState.delete(key);
+      removed++;
+    }
+  }
+  if (removed > 0) {
+    logger.debug({ removed, remaining: throttleState.size }, "throttle_state.cleanup");
+  }
+}
+
+/**
+ * Start periodic cleanup of stale throttle entries.
+ * Cleans up on process SIGTERM/SIGINT to avoid resource leaks.
+ */
+export function startThrottleCleanup(): void {
+  if (throttleCleanupInterval !== null) {
+    return; // Already running
+  }
+  throttleCleanupInterval = setInterval(cleanupStaleThrottleEntries, CLEANUP_INTERVAL_MS);
+  // Clean up on graceful shutdown
+  process.on("SIGTERM", stopThrottleCleanup);
+  process.on("SIGINT", stopThrottleCleanup);
+}
+
+/**
+ * Stop the periodic cleanup interval.
+ */
+export function stopThrottleCleanup(): void {
+  if (throttleCleanupInterval !== null) {
+    clearInterval(throttleCleanupInterval);
+    throttleCleanupInterval = null;
+  }
+  // Run one final cleanup to remove any stale entries
+  cleanupStaleThrottleEntries();
+}
 
 /**
  * Whether the caller should emit a `warn` for this (tag, path)

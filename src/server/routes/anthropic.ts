@@ -7,7 +7,7 @@ import {
   TIMEOUT_MS,
 } from "../utils/proxyUtils.js";
 import {
-  extractAnthropicStreamingInfo,
+  extractAnthropicStreamingInfoFromBytes,
   logStreamingResponse,
   logStreamingError,
 } from "../utils/streamLogger.js";
@@ -22,9 +22,6 @@ anthropicRouter.post("/v1/messages", async (req, res) => {
   const headers = filterHeaders(req.headers, ANTHROPIC_ALLOWED_HEADERS);
   headers["x-api-key"] = MINIMAX_API_KEY;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
   try {
     // Boundary A — start of upstream fetch. `upstreamLatencyMs` is
     // wall-clock time spent waiting on fetch() to resolve (NOT including
@@ -34,27 +31,24 @@ anthropicRouter.post("/v1/messages", async (req, res) => {
       method: "POST",
       headers,
       body: JSON.stringify(req.body),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const upstreamLatencyMs = Date.now() - fetchStart;
-
-    clearTimeout(timeout);
     res.status(fetchRes.status);
 
     forwardRateLimitHeaders(fetchRes, res);
 
     // Stream response back
     if (fetchRes.body) {
-      const textChunks: string[] = [];
+      const chunks: Uint8Array[] = [];
       const body = fetchRes.body as unknown as AsyncIterable<Uint8Array>;
       for await (const chunk of body) {
-        textChunks.push(new TextDecoder().decode(chunk));
+        chunks.push(chunk);
         res.write(chunk);
       }
       res.end();
-      const buffer = textChunks.join('');
 
-      const info = extractAnthropicStreamingInfo(buffer);
+      const info = extractAnthropicStreamingInfoFromBytes(chunks);
       logStreamingResponse(
         fetchRes.status,
         req.method,
@@ -121,7 +115,6 @@ anthropicRouter.post("/v1/messages", async (req, res) => {
       );
     }
   } catch (err: unknown) {
-    clearTimeout(timeout);
     const responseTime = Date.now() - (req.startTime ?? Date.now());
     logStreamingError({
       err,
