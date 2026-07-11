@@ -3,6 +3,8 @@
  * for logging purposes.
  */
 
+import http from "node:http";
+
 import { logger } from "./logger.js";
 import { formatResetsIn } from "./proxyUtils.js";
 import { MAX_CONTENT_LOG } from "../config.js";
@@ -581,6 +583,7 @@ export function extractAnthropicStreamingInfoFromBytes(chunks: Uint8Array[]): {
  */
 export function logStreamingResponse(
   status: number,
+  statusMessage: string,
   method: string,
   endpoint: string,
   responseTime: number,
@@ -634,6 +637,7 @@ export function logStreamingResponse(
     model: responseInfo.model,
     proxy_response: {
       statusCode: status,
+      statusMessage: statusMessage || http.STATUS_CODES[status] || "Unknown",
       contentSnippet:
         responseInfo.contentSnippet.length > MAX_CONTENT_LOG
           ? responseInfo.contentSnippet.slice(-MAX_CONTENT_LOG)

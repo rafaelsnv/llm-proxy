@@ -4,12 +4,12 @@ import {
   filterHeaders,
   ANTHROPIC_ALLOWED_HEADERS,
   forwardRateLimitHeaders,
-  TIMEOUT_MS,
+  TIMEOUT_MS
 } from "../utils/proxyUtils.js";
 import {
   extractAnthropicStreamingInfoFromBytes,
   logStreamingResponse,
-  logStreamingError,
+  logStreamingError
 } from "../utils/streamLogger.js";
 
 export const anthropicRouter = Router();
@@ -31,7 +31,7 @@ anthropicRouter.post("/v1/messages", async (req, res) => {
       method: "POST",
       headers,
       body: JSON.stringify(req.body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(TIMEOUT_MS)
     });
     const upstreamLatencyMs = Date.now() - fetchStart;
     res.status(fetchRes.status);
@@ -51,6 +51,7 @@ anthropicRouter.post("/v1/messages", async (req, res) => {
       const info = extractAnthropicStreamingInfoFromBytes(chunks);
       logStreamingResponse(
         fetchRes.status,
+        fetchRes.statusText,
         req.method,
         "/anthropic/v1/messages",
         Date.now() - (req.startTime ?? Date.now()),
@@ -61,13 +62,14 @@ anthropicRouter.post("/v1/messages", async (req, res) => {
           usage: {
             input_tokens: info.inputTokens ?? 0,
             input_tokens_details: {
-              cached_tokens: info.inputTokensDetails?.cachedTokens ?? undefined,
+              cached_tokens: info.inputTokensDetails?.cachedTokens ?? undefined
             },
             output_tokens: info.outputTokens ?? 0,
             output_tokens_details: {
-              reasoning_tokens: info.outputTokensDetails?.reasoningTokens ?? undefined,
+              reasoning_tokens:
+                info.outputTokensDetails?.reasoningTokens ?? undefined
             },
-            total_tokens: (info.inputTokens ?? 0) + (info.outputTokens ?? 0),
+            total_tokens: (info.inputTokens ?? 0) + (info.outputTokens ?? 0)
           },
           reqId: String(req.id),
           routeClass: "proxy_out",
@@ -81,17 +83,18 @@ anthropicRouter.post("/v1/messages", async (req, res) => {
               | string
               | undefined,
             "content-type": req.headers["content-type"] as string | undefined,
-            "user-agent": req.headers["user-agent"] as string | undefined,
+            "user-agent": req.headers["user-agent"] as string | undefined
           },
           responseId: info.responseId,
           finishReason: info.finishReason,
-          userInput: JSON.stringify(req.body.messages ?? []),
-        },
+          userInput: JSON.stringify(req.body.messages ?? [])
+        }
       );
     } else {
       res.end();
       logStreamingResponse(
         fetchRes.status,
+        fetchRes.statusText,
         req.method,
         "/anthropic/v1/messages",
         Date.now() - (req.startTime ?? Date.now()),
@@ -108,10 +111,10 @@ anthropicRouter.post("/v1/messages", async (req, res) => {
               | string
               | undefined,
             "content-type": req.headers["content-type"] as string | undefined,
-            "user-agent": req.headers["user-agent"] as string | undefined,
+            "user-agent": req.headers["user-agent"] as string | undefined
           },
-          userInput: JSON.stringify(req.body.messages ?? []),
-        },
+          userInput: JSON.stringify(req.body.messages ?? [])
+        }
       );
     }
   } catch (err: unknown) {
@@ -123,7 +126,7 @@ anthropicRouter.post("/v1/messages", async (req, res) => {
       responseTime_ms: responseTime,
       reqId: String(req.id),
       routeClass: "proxy_out",
-      upstreamStatus: undefined,
+      upstreamStatus: undefined
     });
   }
 });
@@ -136,9 +139,9 @@ anthropicRouter.get("/v1/models", (req, res) => {
         type: "model",
         id: "MiniMax-M2.7",
         created_at: "2024-05-10T18:56:40Z",
-        display_name: "MiniMax-M2.7",
-      },
-    ],
+        display_name: "MiniMax-M2.7"
+      }
+    ]
   });
 });
 
@@ -150,15 +153,15 @@ anthropicRouter.get("/v1/models", (req, res) => {
  * empty string for missing `text`) and report that length.
  * Anything else (undefined, number, object) returns 0.
  */
-function computeSystemPromptBytes(
-  system: unknown,
-): number {
+function computeSystemPromptBytes(system: unknown): number {
   if (typeof system === "string") return system.length;
   if (Array.isArray(system)) {
     return system
-      .map((s) => (typeof s === "object" && s !== null && "text" in s
-        ? String((s as { text?: unknown }).text ?? "")
-        : ""))
+      .map((s) =>
+        typeof s === "object" && s !== null && "text" in s
+          ? String((s as { text?: unknown }).text ?? "")
+          : ""
+      )
       .join("").length;
   }
   return 0;

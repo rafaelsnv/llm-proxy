@@ -47,6 +47,7 @@ openaiRouter.post("/openai/v1/chat/completions", async (req, res) => {
       const info = extractOpenAIStreamingInfoFromBytes(chunks);
       logStreamingResponse(
         fetchRes.status,
+        fetchRes.statusText,
         req.method,
         "/openai/v1/chat/completions",
         Date.now() - (req.startTime ?? Date.now()),
@@ -85,6 +86,7 @@ openaiRouter.post("/openai/v1/chat/completions", async (req, res) => {
       res.end();
       logStreamingResponse(
         fetchRes.status,
+        fetchRes.statusText,
         req.method,
         "/openai/v1/chat/completions",
         Date.now() - (req.startTime ?? Date.now()),
