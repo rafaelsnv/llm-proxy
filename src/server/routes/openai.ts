@@ -11,6 +11,7 @@ import {
   logStreamingResponse,
   logStreamingError
 } from "../utils/streamLogger.js";
+import { logger } from "../utils/logger.js";
 
 export const openaiRouter = Router();
 
