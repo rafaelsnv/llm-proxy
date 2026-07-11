@@ -24,11 +24,12 @@ if (logflareApiKey && logflareSourceToken) {
           [key: string]: unknown;
         };
       };
-      // Filter out underscore-prefixed keys, time, and timestamp from pino-http
+      // Filter out underscore-prefixed keys, time, timestamp, and usage from pino-http
       const {
         context,
         time: _time,
         timestamp: _timestamp,
+        usage: _usage,
         ...restMetadata
       } = item.metadata;
       const eventMessage = item.message;
@@ -37,10 +38,9 @@ if (logflareApiKey && logflareSourceToken) {
         ...restMetadata,
         event_message: eventMessage,
         logTime: item.metadata.logTime,
-        host_info: {
-          host: context?.host,
-          pid: context?.pid ? Number(context.pid) : undefined,
-        },
+        host_pid: context?.host && context?.pid
+          ? `${context.host}/${context.pid}`
+          : undefined,
       };
     },
     onError: (payload, err) => {

@@ -2,12 +2,15 @@ import express from "express";
 import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
+import compression from "compression";
 import { logger } from "./utils/logger.js";
-import { PORT } from "./config.js";
+import { PORT, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS } from "./config.js";
 import { corsMiddleware } from "./middleware/cors.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 import { anthropicRouter } from "./routes/anthropic.js";
 import { openaiRouter } from "./routes/openai.js";
+import { quotaRouter } from "./routes/quota.js";
+import { startThrottleCleanup } from "./utils/quotaTypes.js";
 
 // Extend Express Request to include startTime
 declare global {
@@ -19,23 +22,26 @@ declare global {
 }
 
 const rateLimiter = rateLimit({
-  max: parseInt(process.env.RATE_LIMIT_MAX || "100", 10),
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000", 10), // 15 minutes
+  max: RATE_LIMIT_MAX,
+  windowMs: RATE_LIMIT_WINDOW_MS,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
     logger.warn(
-      { req: { method: req.method, url: req.path } },
-      "Rate limit exceeded",
+      {
+        event_message: `429 - ${req.method}\t${req.path}`,
+        req: { method: req.method, url: req.path }
+      },
+      "Rate limit exceeded"
     );
     res.status(429).json({
       error: {
         message: "Too many requests",
         type: "rate_limit_error",
-        status: 429,
-      },
+        status: 429
+      }
     });
-  },
+  }
 });
 
 const app = express();
@@ -57,6 +63,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(corsMiddleware);
 app.use(helmet());
+app.use(compression());
 app.use((req, res, next) => {
   req.startTime = Date.now();
   next();
@@ -93,11 +100,11 @@ app.use(
         method: req.method,
         url: req.url,
         remoteAddress: req.remoteAddress,
-        remotePort: req.remotePort,
+        remotePort: req.remotePort
       }),
       res: (res: { statusCode: number; headers: Record<string, unknown> }) => ({
-        statusCode: res.statusCode,
-      }),
+        statusCode: res.statusCode
+      })
     },
     formatters: {
       log: (obj: Record<string, unknown>) => {
@@ -106,13 +113,13 @@ app.use(
           return { ...rest, ...(metadata as Record<string, unknown>) };
         }
         return obj;
-      },
+      }
     },
     redact: {
       paths: ["timestamp"],
-      remove: true,
-    },
-  }),
+      remove: true
+    }
+  })
 );
 app.use(rateLimiter);
 
@@ -121,13 +128,14 @@ app.get("/health", (_req, res) => {
   res.json({
     statusCode: "200",
     statusMessage: "Ok",
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toISOString()
   });
 });
 
 // Proxy routes
 app.use("/anthropic", anthropicRouter);
-app.use("/openai", openaiRouter);
+app.use("/", openaiRouter);
+app.use("/quota", quotaRouter);
 
 // Error handling
 app.use(notFoundHandler);
@@ -137,22 +145,24 @@ const server = app.listen(PORT, () => {
   console.log(`Minimax Proxy running on http://localhost:${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
 
-  // Startup health check
-  const healthCheckUrl = `http://localhost:${PORT}/health`;
-  fetch(healthCheckUrl)
-    .then((res) => {
-      if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
-      return res.json();
-    })
-    .then((data) => {
-      logger.info({
-        msg: `${data.statusCode} - Startup health check passed`,
-      });
-    })
-    .catch((err) => {
-      logger.error({ msg: `Startup health check failed: ${err.message}` });
-      process.exit(1);
-    });
+  logger.info(
+    {
+      event: "server_startup",
+      port: PORT,
+      url: `http://localhost:${PORT}`,
+      timestamp: new Date().toISOString()
+    },
+    "Minimax Proxy running"
+  );
+  logger.info(
+    {
+      event: "health_check_available",
+      url: `http://localhost:${PORT}/health`
+    },
+    "Health check endpoint ready"
+  );
+  // Start periodic throttle state cleanup
+  startThrottleCleanup();
 });
 
 // Graceful shutdown handler

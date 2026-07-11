@@ -2,19 +2,39 @@
  * Shared proxy utility functions and constants
  */
 
+import { TIMEOUT_MS } from "../config.js";
+
+/**
+ * Convert a Unix timestamp in milliseconds to a human-readable duration string.
+ * Returns null for null/undefined/non-positive values.
+ * Examples: "2h 30m", "45m", "<1m"
+ */
+export function formatResetsIn(unixMs: number | null | undefined): string | null {
+  if (unixMs == null || unixMs <= 0) return null;
+  const totalSeconds = Math.floor(unixMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m`;
+  return "<1m";
+}
+
 // Allowed headers for OpenAI route
 export const ALLOWED_HEADERS = ["content-type"];
 
 // Allowed headers for Anthropic route
+// NOTE: x-api-key is NOT included — the caller's x-api-key must never be
+// forwarded to upstream. The proxy reads it for its own auth (if needed) but
+// the upstream request is sent with the server's MINIMAX_API_KEY via
+// headers["x-api-key"] = MINIMAX_API_KEY in the route handler.
 export const ANTHROPIC_ALLOWED_HEADERS = [
   "content-type",
   "anthropic-version",
   "anthropic-beta",
-  "x-api-key",
 ];
 
-// Request timeout in milliseconds
-export const TIMEOUT_MS = 60000;
+// Request timeout in milliseconds (imported from config)
+export { TIMEOUT_MS };
 
 // Key prefix for valid API keys
 export const KEY_PREFIX = "sk-cp";
