@@ -148,13 +148,15 @@ For Logflare streaming, set `LOGFLARE_API_KEY` and `LOGFLARE_SOURCE_TOKEN`.
 ## Development
 
 ```bash
-npm run dev        # Run both server and client in parallel
+npm run dev        # Run both server and client in parallel (development)
 npm run server     # Run server only with tsx watch
 npm run client     # Run Vite dev server only
-npm run build      # Build for production
-npm run start      # Run production server
+npm run build      # Build for production (vite + tsc)
+npm start          # Run production server (compiled)
 npm run test       # Run tests with Vitest
 ```
+
+**Note:** Use `npm run build` before `npm start` to ensure both client and server are compiled.
 
 ## Termux (Android)
 
@@ -204,11 +206,11 @@ nohup cloudflared tunnel run <tunnel-name> > cloudflared.log 2>&1 &
 ### Build and Run
 
 ```bash
-# Create production script if needed (add to package.json)
-# "prod": "tsx src/server/index.ts"
+# Build the project (compiles both server and client)
+npm run build
 
-# Run proxy (from ~/llm-proxy directory)
-pm2 start npm --name "llm-proxy" -- run prod
+# Run proxy with PM2 (from ~/llm-proxy directory)
+pm2 start npm --name "llm-proxy" -- start
 ```
 
 ### Useful Commands
@@ -230,6 +232,8 @@ pkill cloudflared
 
 # Start everything after phone reboot
 cd ~/llm-proxy
+pm2 flush
+npm run build
 nohup cloudflared tunnel run <tunnel-name> > cloudflared.log 2>&1 &
-pm2 start npm --name "llm-proxy" -- run prod
+pm2 start npm --name "llm-proxy" -- start
 ```
