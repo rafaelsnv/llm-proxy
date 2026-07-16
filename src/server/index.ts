@@ -3,6 +3,8 @@ import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import compression from "compression";
+import path from "path";
+import { fileURLToPath } from "url";
 import { logger } from "./utils/logger.js";
 import { PORT, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS } from "./config.js";
 import { corsMiddleware } from "./middleware/cors.js";
@@ -11,6 +13,11 @@ import { anthropicRouter } from "./routes/anthropic.js";
 import { openaiRouter } from "./routes/openai.js";
 import { quotaRouter } from "./routes/quota.js";
 import { startThrottleCleanup } from "./utils/quotaTypes.js";
+
+// Resolve dist folder for static files (built React app)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DIST_PATH = path.resolve(__dirname, "../../dist");
 
 // Extend Express Request to include startTime
 declare global {
@@ -136,6 +143,15 @@ app.get("/health", (_req, res) => {
 app.use("/anthropic", anthropicRouter);
 app.use("/", openaiRouter);
 app.use("/quota", quotaRouter);
+
+// Serve static files from dist (built React app)
+app.use(express.static(DIST_PATH));
+
+// SPA fallback: serve index.html for client-side routes
+// This runs after API routes since app.get("*") is last
+app.get("*", (_req, res) => {
+  res.sendFile(path.join(DIST_PATH, "index.html"));
+});
 
 // Error handling
 app.use(notFoundHandler);
