@@ -701,8 +701,8 @@ function classifyError(err: unknown, upstreamStatus?: number): string {
     if (upstreamStatus === 401 || upstreamStatus === 403) return "auth";
   }
   if (err && typeof err === "object") {
-    const e = err as { name?: string; code?: string; status?: number; response?: { status?: number } };
-    if (e.name === "AbortError" || e.code === "ABORT_ERR") return "timeout";
+    const e = err as { name?: string; code?: string; message?: string; status?: number; response?: { status?: number } };
+    if (e.name === "AbortError" || e.code === "ABORT_ERR" || e.message?.includes("timeout")) return "timeout";
     const status = e.status ?? e.response?.status;
     if (status === 401 || status === 403) return "auth";
   }
@@ -744,7 +744,7 @@ export function logStreamingError(input: LogStreamingErrorInput): void {
       error_upstream_status: errorUpstreamStatus,
       error_message: errorMessage,
     },
-    "proxy.error",
+    `499 - ${method}\t${endpoint}`,
   );
 }
 

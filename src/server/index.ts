@@ -128,9 +128,8 @@ app.use(
     }
   })
 );
-app.use(rateLimiter);
 
-// Health check
+// Health check — exempt from rate limiting
 app.get("/health", (_req, res) => {
   res.json({
     statusCode: "200",
@@ -139,10 +138,14 @@ app.get("/health", (_req, res) => {
   });
 });
 
+// Monitoring endpoints — exempt from rate limiting
+app.use("/quota", quotaRouter);
+
+app.use(rateLimiter);
+
 // Proxy routes
 app.use("/anthropic", anthropicRouter);
 app.use("/", openaiRouter);
-app.use("/quota", quotaRouter);
 
 // Serve static files from dist (built React app)
 app.use(express.static(DIST_PATH));
