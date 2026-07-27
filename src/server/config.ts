@@ -16,7 +16,7 @@ const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
 const RATE_LIMIT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10); // 15 minutes
 
 // Proxy configuration
-const TIMEOUT_MS = 60_000; // 60 seconds
+const TIMEOUT_MS = 300_000; // 5 minutes
 
 // Logging configuration
 const MAX_CONTENT_LOG = 500; // Maximum characters to log from response content
